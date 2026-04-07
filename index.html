@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProfessorCompressor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .upload-area {
+      border: 3px dashed #3b82f6;
+    }
+    .logo-img {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+  <div class="max-w-3xl mx-auto px-6 py-12">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-12">
+      <div class="flex items-center gap-3">
+        <img src="https://files.oaiusercontent.com/file-1dLCp?se=2026-04-07T00%3A00%3A00Z&sp=r&sv=2024-08-04&sr=b&rscc=max-age%3D3628800%2C%20immutable&rscd=attachment%3B%20filename%3DPROF.logo.png" 
+             alt="ProfessorCompressor" 
+             class="logo-img">
+        <h1 class="text-3xl font-semibold tracking-tight">ProfessorCompressor</h1>
+      </div>
+      <p class="text-zinc-400 text-sm">100% in-browser</p>
+    </div>
+
+    <!-- UPLOAD SCREEN -->
+    <div id="upload-screen" class="bg-zinc-900 rounded-3xl p-10 text-center">
+      <div id="drop-zone" class="upload-area rounded-3xl py-20 px-8 cursor-pointer hover:bg-zinc-800 transition-colors">
+        <input type="file" id="file-input" accept="video/*" class="hidden">
+        <div class="mx-auto w-16 h-16 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center text-6xl mb-6">📹</div>
+        <p class="text-2xl font-medium mb-2">Drop your video here</p>
+        <p class="text-zinc-400 mb-8">or click to browse</p>
+        <div class="inline-flex bg-blue-600 hover:bg-blue-500 transition-colors text-white font-medium px-8 py-4 rounded-2xl text-lg">
+          Choose File
+        </div>
+        <p class="text-xs text-zinc-500 mt-10">MP4 • MOV • AVI • WebM • up to 2 GB recommended</p>
+      </div>
+    </div>
+
+    <!-- MAIN SCREEN -->
+    <div id="main-screen" class="hidden bg-zinc-900 rounded-3xl p-10">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <!-- Left: Preview -->
+        <div>
+          <p class="uppercase text-xs tracking-widest text-zinc-400 mb-3">Original</p>
+          <video id="preview-video" controls class="w-full aspect-video bg-black rounded-3xl"></video>
+          <div class="mt-4 flex items-center justify-between text-sm">
+            <div>
+              <span class="text-zinc-400">File:</span>
+              <span id="file-name-display" class="ml-2 font-medium text-zinc-200"></span>
+            </div>
+            <div class="font-mono text-blue-400" id="original-size-display"></div>
+          </div>
+        </div>
+
+        <!-- Right: Controls -->
+        <div class="flex flex-col">
+          <div class="mb-8">
+            <label class="block uppercase text-xs tracking-widest text-zinc-400 mb-3">Target file size</label>
+            <div class="flex items-center gap-4">
+              <input type="range" id="size-slider" min="5" max="500" value="50" step="1" 
+                     class="flex-1 accent-blue-500 cursor-pointer">
+              <div id="target-size-display" class="font-mono text-4xl font-semibold tabular-nums w-28 text-right">50 MB</div>
+            </div>
+            <div class="flex justify-between text-xs text-zinc-400 mt-1">
+              <span>Smaller</span>
+              <span id="max-size-hint" class="text-zinc-400"></span>
+            </div>
+          </div>
+
+          <button onclick="startCompression()" 
+                  class="mt-auto w-full py-6 bg-blue-600 hover:bg-blue-500 transition-colors text-white text-xl font-semibold rounded-3xl active:scale-[0.98]">
+            Compress to MP4
+          </button>
+
+          <div class="text-center text-zinc-400 text-xs mt-6 flex items-center justify-center gap-2">
+            <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+            Audio kept intact • Output is always .mp4
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROGRESS SCREEN -->
+    <div id="progress-screen" class="hidden fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+      <div class="bg-zinc-900 rounded-3xl max-w-md w-full mx-4 p-8 text-center">
+        <div class="mb-8">
+          <img src="https://files.oaiusercontent.com/file-1dLCp?se=2026-04-07T00%3A00%3A00Z&sp=r&sv=2024-08-04&sr=b&rscc=max-age%3D3628800%2C%20immutable&rscd=attachment%3B%20filename%3DPROF.logo.png" 
+               alt="ProfessorCompressor" 
+               class="mx-auto w-12 h-12 mb-6">
+          <h2 class="text-2xl font-semibold mb-1">Compressing your video</h2>
+          <p id="progress-status" class="text-zinc-400">Loading engine… (first time only)</p>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="relative h-3 bg-zinc-800 rounded-3xl overflow-hidden mb-6">
+          <div id="progress-bar" class="absolute left-0 top-0 h-3 bg-gradient-to-r from-blue-500 to-cyan-400 rounded-3xl transition-all" style="width: 0%"></div>
+        </div>
+
+        <div class="flex justify-between text-sm font-medium mb-8">
+          <div id="progress-percent" class="font-mono">0%</div>
+          <div id="time-remaining" class="text-zinc-400 font-mono">—</div>
+        </div>
+
+        <button onclick="cancelCompression()" 
+                class="text-zinc-400 hover:text-zinc-200 transition-colors text-sm font-medium px-6 py-3">
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <!-- RESULT SCREEN -->
+    <div id="result-screen" class="hidden bg-zinc-900 rounded-3xl p-10">
+      <div class="text-center mb-8">
+        <div class="mx-auto w-12 h-12 flex items-center justify-center bg-emerald-400/10 text-emerald-400 rounded-2xl text-4xl mb-4">✅</div>
+        <h2 class="text-3xl font-semibold">Compression complete</h2>
+        <p class="text-emerald-400 font-medium mt-1">Your MP4 is ready to download</p>
+      </div>
+
+      <video id="result-video" controls class="w-full aspect-video bg-black rounded-3xl mb-8"></video>
+
+      <div class="grid grid-cols-2 gap-4 mb-8">
+        <div class="bg-zinc-800 rounded-3xl p-5 text-center">
+          <p class="text-xs text-zinc-400">ORIGINAL</p>
+          <p id="result-original-size" class="font-mono text-3xl font-semibold text-zinc-200 mt-1"></p>
+        </div>
+        <div class="bg-emerald-900/30 rounded-3xl p-5 text-center">
+          <p class="text-xs text-emerald-400">COMPRESSED</p>
+          <p id="result-new-size" class="font-mono text-3xl font-semibold text-emerald-400 mt-1"></p>
+        </div>
+      </div>
+
+      <button onclick="downloadFile()" 
+              class="w-full py-6 bg-white text-zinc-950 hover:bg-zinc-100 transition-colors text-2xl font-semibold rounded-3xl mb-4">
+        Download .mp4
+      </button>
+      
+      <button onclick="resetApp()" 
+              class="w-full py-4 text-zinc-400 hover:text-white text-sm font-medium">
+        Compress another video
+      </button>
+    </div>
+  </div>
+
+  <script>
+    let originalFile = null
+    let compressedBlob = null
+    let ffmpegInstance = null
+    let videoDuration = 0
+    let isCancelled = false
+
+    async function loadFFmpeg() {
+      if (ffmpegInstance) return ffmpegInstance
+      
+      const { FFmpeg } = window.FFmpegWASM || window
+      ffmpegInstance = new FFmpeg()
+      
+      ffmpegInstance.on('progress', ({ progress }) => {
+        if (isCancelled) return
+        const percent = Math.round(progress * 100)
+        document.getElementById('progress-bar').style.width = percent + '%'
+        document.getElementById('progress-percent').textContent = percent + '%'
+        
+        if (percent > 15) {
+          const elapsed = (Date.now() - window.startTime) / 1000
+          const totalEst = elapsed / (percent / 100)
+          const remaining = Math.max(0, Math.round(totalEst - elapsed))
+          document.getElementById('time-remaining').textContent = remaining + 's left'
+        }
+      })
+      
+      document.getElementById('progress-status').textContent = 'Downloading FFmpeg engine (≈30 MB, one-time)…'
+      await ffmpegInstance.load({
+        corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js'
+      })
+      return ffmpegInstance
+    }
+
+    async function getDuration(file) {
+      return new Promise(resolve => {
+        const vid = document.createElement('video')
+        vid.preload = 'metadata'
+        vid.onloadedmetadata = () => {
+          resolve(vid.duration)
+          URL.revokeObjectURL(vid.src)
+        }
+        vid.src = URL.createObjectURL(file)
+      })
+    }
+
+    function formatSize(bytes) {
+      const kb = bytes / 1024
+      if (kb < 1024) return kb.toFixed(1) + ' KB'
+      return (kb / 1024).toFixed(1) + ' MB'
+    }
+
+    function handleUpload(file) {
+      if (!file.type.startsWith('video/')) {
+        alert('Please select a video file')
+        return
+      }
+      originalFile = file
+      
+      document.getElementById('upload-screen').classList.add('hidden')
+      document.getElementById('main-screen').classList.remove('hidden')
+      
+      const videoEl = document.getElementById('preview-video')
+      videoEl.src = URL.createObjectURL(file)
+      
+      document.getElementById('file-name-display').textContent = file.name.length > 22 
+        ? file.name.substring(0, 19) + '…' : file.name
+      document.getElementById('original-size-display').innerHTML = 
+        `<span class="text-zinc-400">Original size:</span> ${formatSize(file.size)}`
+      
+      const maxMB = Math.max(30, Math.floor(file.size / (1024 * 1024) * 0.9))
+      const slider = document.getElementById('size-slider')
+      slider.max = maxMB
+      slider.value = Math.floor(maxMB * 0.65)
+      updateSlider()
+    }
+
+    function updateSlider() {
+      const val = document.getElementById('size-slider').value
+      document.getElementById('target-size-display').textContent = val + ' MB'
+      document.getElementById('max-size-hint').textContent = `up to ${document.getElementById('size-slider').max} MB`
+    }
+
+    async function startCompression() {
+      if (!originalFile) return
+      
+      isCancelled = false
+      window.startTime = Date.now()
+      
+      document.getElementById('main-screen').classList.add('hidden')
+      document.getElementById('progress-screen').classList.remove('hidden')
+      
+      try {
+        const ffmpeg = await loadFFmpeg()
+        document.getElementById('progress-status').textContent = 'Compressing video…'
+        
+        const targetMB = parseInt(document.getElementById('size-slider').value)
+        const targetBytes = targetMB * 1024 * 1024
+        
+        if (videoDuration === 0) videoDuration = await getDuration(originalFile)
+        
+        const audioKbps = 128
+        const videoKbps = Math.max(200, Math.floor(((targetBytes * 8) / videoDuration / 1024) - audioKbps))
+        
+        const inputName = 'input_' + Date.now() + '.tmp'
+        const outputName = 'compressed.mp4'
+        
+        await ffmpeg.writeFile(inputName, new Uint8Array(await originalFile.arrayBuffer()))
+        
+        await ffmpeg.exec([
+          '-i', inputName,
+          '-c:v', 'libx264',
+          '-b:v', videoKbps + 'k',
+          '-c:a', 'copy',
+          '-preset', 'medium',
+          '-movflags', '+faststart',
+          outputName
+        ])
+        
+        const data = await ffmpeg.readFile(outputName)
+        compressedBlob = new Blob([data.buffer], { type: 'video/mp4' })
+        
+        document.getElementById('progress-screen').classList.add('hidden')
+        document.getElementById('result-screen').classList.remove('hidden')
+        
+        const resultVideo = document.getElementById('result-video')
+        resultVideo.src = URL.createObjectURL(compressedBlob)
+        
+        document.getElementById('result-original-size').innerHTML = 
+          `<span class="text-zinc-400 text-sm">Original</span><br>${formatSize(originalFile.size)}`
+        document.getElementById('result-new-size').innerHTML = 
+          `<span class="text-emerald-400 text-sm">New</span><br>${formatSize(compressedBlob.size)}`
+        
+      } catch (err) {
+        console.error(err)
+        if (!isCancelled) alert('Something went wrong. Try a smaller video or refresh the page.')
+        document.getElementById('progress-screen').classList.add('hidden')
+        document.getElementById('main-screen').classList.remove('hidden')
+      }
+    }
+
+    function cancelCompression() {
+      if (confirm('Cancel the compression?')) {
+        isCancelled = true
+        document.getElementById('progress-screen').classList.add('hidden')
+        document.getElementById('main-screen').classList.remove('hidden')
+      }
+    }
+
+    function downloadFile() {
+      if (!compressedBlob) return
+      const url = URL.createObjectURL(compressedBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'compressed_' + (originalFile.name || 'video') + '.mp4'
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+
+    function resetApp() {
+      location.reload()
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const dropZone = document.getElementById('drop-zone')
+      const fileInput = document.getElementById('file-input')
+      
+      dropZone.addEventListener('click', () => fileInput.click())
+      
+      fileInput.addEventListener('change', e => {
+        if (e.target.files[0]) handleUpload(e.target.files[0])
+      })
+      
+      dropZone.addEventListener('dragover', e => {
+        e.preventDefault()
+        dropZone.style.borderColor = '#60a5fa'
+      })
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.style.borderColor = '#3b82f6'
+      })
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault()
+        dropZone.style.borderColor = '#3b82f6'
+        if (e.dataTransfer.files[0]) handleUpload(e.dataTransfer.files[0])
+      })
+      
+      document.getElementById('size-slider').addEventListener('input', updateSlider)
+    })
+  </script>
+</body>
+</html>
